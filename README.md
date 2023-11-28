@@ -14,6 +14,8 @@ PART A. TIME ANALYSIS
 
 i) Bar plot showing the number of transactions occurring every month
 between the start and end of the dataset.
+
+
 ii) Bar plot showing the average value of transaction in each month
 between the start and end of the dataset.
 
@@ -33,5 +35,7 @@ PART D. DATA EXPLORATION
 i) Scam Analysis : Popular Scams
 Identifying the most lucrative scams and analyzing the ether change over
 time.
+
+
 ii) Miscellaneous Analysis : Gas guzzler
 Analysis of gas price and gas used for contract transactions over time.
