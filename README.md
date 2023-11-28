@@ -10,18 +10,26 @@ ethereum transactions, ethereum block data used to acquire mining details, and e
 contracts used to design smart contracts.
 
 PART A. TIME ANALYSIS
+
+
 i) Bar plot showing the number of transactions occurring every month
 between the start and end of the dataset.
 ii) Bar plot showing the average value of transaction in each month
 between the start and end of the dataset.
 
 PART B. TOP TEN MOST POPULAR SERVICES
+
+
 Top ten smart contracts by total ether received.
 
 PART C. TOP TEN MOST ACTIVE MINERS
+
+
 Top ten miners by the size of the blocks mined.
 
 PART D. DATA EXPLORATION
+
+
 i) Scam Analysis : Popular Scams
 Identifying the most lucrative scams and analyzing the ether change over
 time.
