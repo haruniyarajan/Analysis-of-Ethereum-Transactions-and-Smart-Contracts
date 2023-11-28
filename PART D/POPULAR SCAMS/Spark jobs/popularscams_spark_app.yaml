@@ -1,0 +1,135 @@
+# spark application object
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: popularscams-spark-app
+spec:
+  type: Python
+  proxyUser: ec22089
+  sparkVersion: 3.0.1
+  pythonVersion: '3'
+  sparkConf:
+    "spark.metrics.conf.*.source.jvm.class": "org.apache.spark.metrics.source.JvmSource"
+    "spark.metrics.appStatusSource.enabled": "true"
+    "spark.eventLog.enabled": "true"
+    "spark.eventLog.dir": "s3a://spark-hs-bkt-57507489-2d64-43d6-bb23-62fb0e786227/logs-dir/"
+    "spark.hadoop.fs.s3a.bucket.spark-hs-bkt-57507489-2d64-43d6-bb23-62fb0e786227.endpoint": "rook-ceph-rgw-ceph-storage-object.rook-ceph-cluster.svc:8080"
+    "spark.hadoop.fs.s3a.bucket.spark-hs-bkt-57507489-2d64-43d6-bb23-62fb0e786227.access.key": "AS7LD6MZTW2IALU047EU"
+    "spark.hadoop.fs.s3a.bucket.spark-hs-bkt-57507489-2d64-43d6-bb23-62fb0e786227.secret.key": "9lYhoT6GH58W4WuhfOJZUrpKzv2gKresKf5B9p7I"
+    "spark.hadoop.fs.s3a.bucket.spark-hs-bkt-57507489-2d64-43d6-bb23-62fb0e786227.path.style.access": "true"
+    "spark.hadoop.fs.s3a.bucket.spark-hs-bkt-57507489-2d64-43d6-bb23-62fb0e786227.connection.ssl.enabled": "false"
+  mainApplicationFile: 'local:///home/popularscams.py'
+  image: "registry.comp-teach.qmul.ac.uk/data-science-catalogue/pyspark-odh:s3.0.1-h3.3.0_v0.1.0-boto3"
+  imagePullPolicy: Always
+  volumes:
+    - name: popularscams
+      configMap:
+        name: popularscams
+  restartPolicy:
+    type: OnFailure
+    onFailureRetries: 3
+    onFailureRetryInterval: 10
+    onSubmissionFailureRetries: 5
+    onSubmissionFailureRetryInterval: 20
+  timeToLiveSeconds: 15
+  deps:
+    jars:
+      - local:///opt/spark/jars/graphframes-0.8.2-spark3.0-s_2.12.jar
+      #    repositories:
+      #      - https://repos.spark-packages.org/
+      #    packages:
+      #      - graphframes:graphframes:0.8.2-spark3.0-s_2.12
+  driver:
+    serviceAccount: 'spark-operator-spark'
+    labels:
+      type: spark-application
+    env:
+      - name: STREAMING_SERVER
+        value: 'stream-emulator.data-science-tools.svc.cluster.local'
+      - name: STREAMING_SERVER_PORT
+        value: '5551'
+      - name: DATA_REPOSITORY_BUCKET
+        value: 'data-repository-bkt'
+      - name: BUCKET_PORT
+        valueFrom:
+          configMapKeyRef:
+            name: object-bucket
+            key: BUCKET_PORT
+      - name: S3_ENDPOINT_URL
+        valueFrom:
+          configMapKeyRef:
+            name: object-bucket
+            key: BUCKET_HOST
+      - name: BUCKET_NAME
+        valueFrom:
+          configMapKeyRef:
+            name: object-bucket
+            key: BUCKET_NAME
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: object-bucket
+            key: AWS_ACCESS_KEY_ID
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: object-bucket
+            key: AWS_SECRET_ACCESS_KEY
+    coreRequest: "0.5"
+    cores: 1
+    memory: "4g"
+    volumeMounts:
+      - name: popularscams
+        mountPath: '/home/'
+    nodeSelector:
+      node-role.kubernetes.io/big-data:
+    tolerations:
+    - effect: NoSchedule
+      key: "gpu-node"
+      operator: "Exists"
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: "sparkoperator.k8s.io/app-name"
+                operator: In
+                values:
+                - "popularscams-spark-app"
+            topologyKey: kubernetes.io/hostname	
+  executor:
+    labels:
+      type: spark-application
+    instances: 2
+    coreRequest: "0.5"
+    memory: "4g"
+    cores: 1
+    nodeSelector:
+      node-role.kubernetes.io/big-data:
+    tolerations:
+    - effect: NoSchedule
+      key: "gpu-node"
+      operator: "Exists"
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: "sparkoperator.k8s.io/app-name"
+                operator: In
+                values:
+                - "popularscams-spark-app"
+            topologyKey: kubernetes.io/hostname
+  dynamicAllocation:
+    enabled: false
+    maxExecutors: 24
+  monitoring:
+    exposeDriverMetrics: true
+    exposeExecutorMetrics: true
+    prometheus:
+      jmxExporterJar: "/prometheus/jmx_prometheus_javaagent-0.15.0.jar"
+      portName: 'tcp-prometheus'

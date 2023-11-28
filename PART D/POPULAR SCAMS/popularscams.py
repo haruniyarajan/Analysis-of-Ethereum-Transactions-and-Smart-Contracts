@@ -1,0 +1,94 @@
+import sys, string
+import os
+import socket
+import time
+import operator
+import boto3
+import json
+from pyspark.sql import SparkSession
+from datetime import datetime
+
+if __name__ == "__main__":
+
+    spark = SparkSession\
+        .builder\
+        .appName("Ethereum")\
+        .getOrCreate()
+
+    def good_lines_trans(line):
+        try:
+            fields = line.split(',')
+            if len(fields)!=15:
+                return False
+            int(fields[11])
+            str(fields[6])
+            float(fields[7])
+            return True
+        except:
+            return False
+        
+    def good_lines_scams(line):
+        try:
+            fields = line.split(',')
+            if len(fields)!=8:
+                return False
+            int(fields[0])
+            str(fields[4])
+            str(fields[6])
+            return True
+        except:
+            return False
+    
+    s3_data_repository_bucket = os.environ['DATA_REPOSITORY_BUCKET']
+
+    s3_endpoint_url = os.environ['S3_ENDPOINT_URL']+':'+os.environ['BUCKET_PORT']
+    s3_access_key_id = os.environ['AWS_ACCESS_KEY_ID']
+    s3_secret_access_key = os.environ['AWS_SECRET_ACCESS_KEY']
+    s3_bucket = os.environ['BUCKET_NAME']
+
+    hadoopConf = spark.sparkContext._jsc.hadoopConfiguration()
+    hadoopConf.set("fs.s3a.endpoint", s3_endpoint_url)
+    hadoopConf.set("fs.s3a.access.key", s3_access_key_id)
+    hadoopConf.set("fs.s3a.secret.key", s3_secret_access_key)
+    hadoopConf.set("fs.s3a.path.style.access", "true")
+    hadoopConf.set("fs.s3a.connection.ssl.enabled", "false")
+    
+    transactions = spark.sparkContext.textFile("s3a://" + s3_data_repository_bucket + "/ECS765/ethereum-parvulus/transactions.csv")
+    scams = spark.sparkContext.textFile("s3a://" + s3_data_repository_bucket + "/ECS765/ethereum-parvulus/scams.csv")
+
+    
+    transactions = transactions.filter(good_lines_trans)
+    scams = scams.filter(good_lines_scams)
+    
+    # Compute popular scams
+    scam_mapping_1 = scams.map(lambda x: (x.split(',')[6], (x.split(',')[0],x.split(',')[4])))
+    trans_mapping_1 = transactions.map(lambda x:  (x.split(',')[6], float(x.split(',')[7])))
+    joined_data_1 = trans_mapping_1.join(scam_mapping_1)
+    
+    popular_scams = joined_data_1.map(lambda x: ((x[1][1][0], x[1][1][1]), x[1][0])).mapValues(lambda amount: float(amount)).reduceByKey(lambda a, b: a + b).map(lambda a: ((a[0][0], a[0][1]), a[1]))
+    top_pop_scams=popular_scams.takeOrdered(10, key=lambda l: -1 * l[1])
+    print(popular_scams.take(10))
+
+    
+    # Compute time of transactions for each scam
+    scam_mapping_2 = scams.map(lambda x: (x.split(',')[6], x.split(',')[4]))
+    trans_mapping_2 = transactions.map(lambda x:  (x.split(',')[6], (time.strftime("%m/%Y",time.gmtime(int(x.split(',')[11]))),x.split(',')[7])))
+    joined_data_2 = trans_mapping_2.join(scam_mapping_2)
+
+    ethertime = joined_data_2.map(lambda x: ((x[1][0][0], x[1][1]), x[1][0][1])).mapValues(lambda amount: float(amount)).reduceByKey(lambda a, b: a + b).map(lambda a: ((a[0][0], a[0][1]), a[1]))
+    print(ethertime.take(10))
+    
+    now = datetime.now() # current date and time
+    date_time = now.strftime("%d-%m-%Y_%H:%M:%S")
+    
+    my_bucket_resource = boto3.resource('s3',
+                                         endpoint_url='http://' + s3_endpoint_url,
+                                         aws_access_key_id=s3_access_key_id,
+                                         aws_secret_access_key=s3_secret_access_key)
+    
+    my_result_object = my_bucket_resource.Object(s3_bucket,'ethereum_most_lucrative_scams' + date_time + '/most_lucrative_scams.txt')
+    my_result_object.put(Body=json.dumps(top_pop_scams))               
+    my_result_object1 = my_bucket_resource.Object(s3_bucket,'ethereum_ether_vs_time' + date_time + '/ether_vs_time.txt')
+    my_result_object1.put(Body=json.dumps(ethertime.take(100)))
+    spark.stop()
+    
